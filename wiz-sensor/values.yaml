@@ -14,6 +14,9 @@ podAnnotations: {}
 # Additional environment variables to add to the components Pods as pairs “name”, “value”.
 podCustomEnvironmentVariables: []
 
+# enable vulnerability scanner (usually for on-prem deployments)
+diskScanEnabled: false
+
 # Expose some metrics to be consumed by Prometheus and other Metrics servers.
 # The default port can be changed in case of conflicts
 exposeMetrics: false
