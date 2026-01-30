@@ -1,4 +1,5 @@
 {{- if .Values.serviceAccount.rbac -}}
+{{- $kubeVersion := include "wiz-sensor.kubeVersion" . -}}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -12,7 +13,35 @@ rules:
   - apiGroups: ["", "apps", "batch"]
     resources: [
       "namespaces", "nodes", "daemonsets", "replicasets", "deployments",
-      "jobs", "cronjobs", "statefulsets", "replicationcontrollers", "serviceaccounts",
+      "jobs", "cronjobs", "statefulsets", "replicationcontrollers", "serviceaccounts"
     ]
     verbs: ["get", "list", "watch"]
+
+{{- if or .Values.allowKubeletCommunication .Values.forceKubeletCommunication }}
+  - apiGroups: [""]
+{{- if or .Values.kubeletLegacyProxy (semverCompare "<1.33" $kubeVersion) }}
+    resources: ["nodes/proxy"]
+{{- else }}
+    resources: ["nodes/pods"]
+{{- end }}
+    verbs: ["get"]
+{{- end }}
+
+  - apiGroups:
+      - "argoproj.io"
+      - "sparkoperator.k8s.io"
+      - "ray.io"
+      - "tekton.dev"
+      - "composer.cloud.google.com"
+      - "kafka.strimzi.io"
+      - "actions.github.com"
+    resources: ["*"]
+    verbs: ["get"]
+
+{{- if .Values.serviceAccount.rbacGetAll }}
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["get"]
+{{- end }}
+
 {{- end -}}

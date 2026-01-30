@@ -23,6 +23,9 @@ allowedCapabilities:
   - FOWNER # file hashing
   - SYS_PTRACE # eBPF
   - KILL # forensics
+  - SYSLOG # syslog
+  - CHOWN # Access filesystem with overlayFS.
+  - SETPCAP # Drop capabilities when not needed.
 requiredDropCapabilities: null
 fsGroup:
   type: RunAsAny
@@ -39,9 +42,13 @@ seccompProfiles:
   - "*"
 users:
   - system:serviceaccount:{{ .Release.Namespace }}:{{ include "wiz-sensor.serviceAccountName" . }}
+# Keep alphabetically sorted
 volumes:
+  - configMap
   - downwardAPI
   - emptyDir
   - hostPath
+  - persistentVolumeClaim
+  - projected
   - secret
 {{- end }}

@@ -5,6 +5,15 @@
 # override default application name
 nameOverride: "wiz-broker"
 enabled: true
+commonLabels: {} # Labels applied on all the resources (not used for selection)
+
+image:
+  registry: wiziopublic.azurecr.io/wiz-app
+  repository: wiz-broker
+  pullPolicy: Always
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+  tagSuffix: ""
 
 targetIp: ""
 targetPort: 443
@@ -16,8 +25,41 @@ serviceAccount:
   # The name of the service account to use.
   name: ""
 
+# enable the restart rollout rbac policy
+autoRolloutUpdate: true
+
+healthPort: 30000
+
+connectorType: ""
+
+# list of allowed endpoints to access by the broker
+allowedEndpoints: []
+
 podCustomEnvironmentVariablesFile: ""
+
+podCustomEnvironmentVariables: []
+customVolumes: []
+customVolumeMounts: []
+podAdditionalSpec: {}
+tolerations: []
 skipTlsVerify: false # true indicates that the proxy's certificate should not be verified. DO NOT USE IN PRODUCTION!
+podAnnotations: {}
+nodeSelector: { } # custom assignment to nodes
+affinity:
+  # run on linux arm64 or amd64 nodes
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/os
+              operator: In
+              values:
+                - linux
+            - key: kubernetes.io/arch
+              operator: In
+              values:
+                - arm64
+                - amd64
 
 caCertificate:
   enabled: false
@@ -26,6 +68,7 @@ caCertificate:
   secretName: ""
   pem: "" # PEM format CA certificate to use for proxy TLS verification.
 
+# DEPRECATED, WILL BE REMOVED (use httpProxyConfiguration.clientCertificate instead)
 mtls:
   enabled: false
   createSecret: true # If false, need to create the secret manually and provide its name in secretName.
@@ -41,7 +84,7 @@ wizConnector:
   # Specifies whether a connector secret should be created
   # If createSecret is false you need to:
   #  1. Create secret with this keys:
-  #     CONNECTOR_ID, CONNECTOR_TOKEN, TARGET_DOMAIN, TARGET_IP, TARGET_PORT
+  #     CONNECTOR_ID
   #  2. Set secretName to reference your secret
   createSecret: true
   autoCreated: false
@@ -50,18 +93,11 @@ wizConnector:
   secretName: ""
 
   connectorId: ""
-  connectorToken: ""
-  targetDomain: ""
-  targetIp: ""
-  targetPort: ""
-  tunnelServerDomain: ""
-  tunnelServerPort: ""
-  tunnelClientAllowedDomains: []
 
 wizApiToken:
   clientId: "" # Client ID of the Wiz Service Account.
   clientToken: "" # Client secret of the Wiz Service Account.
-  clientEndpoint: "" # Set to 'gov' or 'fedramp' for gov/fedramp tenants only, otherwise leave blank.
+  clientEndpoint: "" # Defaults to commercial.
 
   secret:
     # Should a Secret be created by the chart or not.
@@ -75,7 +111,26 @@ wizApiToken:
     name: ""
 
   # API token should be read from an environment file, which is specified in podCustomEnvironmentVariablesFile
+  # The file must contain the following lines:
+  # WIZ_CLIENT_ID=<wiz service account id>
+  # WIZ_CLIENT_TOKEN=<siz service account token>
   usePodCustomEnvironmentVariablesFile: false
+
+  # Set the `wizApiTokensVolumeMount` below to a non-empty string if you are passing the Wiz service account
+  # token (client id and client token) via mounts, e.g. when using the Vault operator to inject secrets to Pods.
+  # In this case you are responsible for creating the mounts.
+  # You must also set `.Values.customVolumes` and `.Values.customVolumeMounts`.
+  # The mounts must have at least these 2 files:
+  # clientId - with this content: <wiz service account id>
+  # clientToken - with this content: <wiz service account token>
+  #
+  # e.g. wizApiTokensVolumeMount: "/var/api-client/"
+  #      and this is how the mount looks like on the file system:
+  #      /var/api-client/clientId
+  #      /var/api-client/clientToken
+  #
+  # Implies `secret.enabled: false`.
+  wizApiTokensVolumeMount: ""
 
 httpProxyConfiguration:
   enabled: false
@@ -88,9 +143,15 @@ httpProxyConfiguration:
   annotations: {}
   secretName: "" # Overriding default name for proxy secret name (.Release.Name + "-proxy-configuration" by default)
 
+  # TIP: a common mistake is to use https://<proxy-server> for httpsProxy, even though the proxy itself is http://<proxy-server>.
   httpProxy: "" # http(s)://user:password@your-proxy:port (user, password and port are optional)
   httpsProxy: "" # http(s)://user:password@your-proxy:port (user, password and port are optional)
-  noProxyAddress: "" # comma or space separated list of machine or domain names
+  noProxyAddress: "kubernetes,kubernetes.default,kubernetes.default.svc,kubernetes.default.svc.cluster.local"
+
+  # (optional) Proxy client certificate in PEM format. This is required for client certificate authentication.
+  # The file should contain a certificate and a private key in PEM format.
+  clientCertificate: ""
+
 
 # Specifies whether the broker is managed by Wiz or not.
 # Do not edit manually.
@@ -98,6 +159,35 @@ managed:
   enabled: false
   # Relevant only for wiz-managed brokers
   outpostId: ""
+  oncallClusterID: ""
+
+resources: {}
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts run on environments with little
+  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 100m
+#   memory: 128Mi
+
+# Set this to true if you are using Istio in sidecar mode.
+# When Istio uses sidecars, there are 2 issues when deploying Wiz:
+# 1) The creation and deletion Jobs never complete (due to istio-proxy sidecar)
+# 2) There is a race condition and possible network connectivity failures
+#    when contacting the Wiz backend.
+#
+# When either of this happens, either the installation, upgrade or uninstallation
+# of the charts fail.
+# Setting this to true ensures that the istio-proxy gets a graceful shutdown
+# and mitigates the networking race condition by sleeping before the Job starts.
+# Learn more:
+# https://istio.io/latest/blog/2023/native-sidecars/
+istio:
+  enabled: false
+  proxySidecarPort: 15000
 
 global:
   # Set the log level. Can be one of "debug", "info", "warn", or "error".
@@ -106,17 +196,116 @@ global:
 
   image:
     registry: wiziopublic.azurecr.io/wiz-app
-    # Use this if you are deploying on federal environments with FIPS endpoints.
-    # repository: wiz-broker-fips
     repository: wiz-broker
     pullPolicy: Always  # Always pull the image on every deployment
     # Overrides the image tag whose default is the chart appVersion.
     tag: ""
+    tagSuffix: ""
   imagePullSecrets: [] # Secrets for container image registry keys as described in https://kubernetes.io/docs/concepts/containers/images/#referring-to-an-imagepullsecrets-on-a-pod
 
+  commonLabels: {} # Labels applied on all the resources (not used for selection)
+
   podAnnotations: {}
+  nodeSelector: { } # custom assignment to nodes
+  affinity: { }
   customVolumes: []
   customVolumeMounts: []
+  podAdditionalSpec: {}
+  podCustomEnvironmentVariables: []
+  tolerations: [ ] # custom tolerations
+
+  # Wiz Helm Charts process the security contexts
+  # in the following order:
+  # 1. Pod security context
+  #    lowPrivilegePodSecurityPolicy -> podSecurityContext
+  # 2. Containers security context
+  #    lowPrivilegeSecurityPolicy -> securityContext
+  #
+  # Populating the following overrides lowPrivilegeSecurityPolicy to your user-supplied values.yaml
+  # allows you to customize and override the defaults
+  # (useful for e.g. OpenShift installations that automatically
+  #  mutate the Pod and use the first UID and first GID from
+  #  the allowed range to run the Pod).
+  #
+  # lowPrivilegePodSecurityPolicy: {}
+  # lowPrivilegeSecurityPolicy: {}
+
   podSecurityContext:
     runAsNonRoot: true
-    runAsUser: 1000
+    runAsUser: 10000
+
+  securityContext:
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsGroup: 10000
+    runAsUser: 10000
+    capabilities:
+      drop:
+        - ALL
+
+  wizApiToken:
+    clientEndpoint: "" # Defaults to commercial.
+    secret:
+      name: "" # Override with parent secret name
+    # Set the `wizApiTokensVolumeMount` below to a non-empty string if you are passing the Wiz service account
+    # token (client id and client token) via mounts, e.g. when using the Vault operator to inject secrets to Pods.
+    # In this case you are responsible for creating the mounts.
+    # You must also set `.Values.customVolumes` and `.Values.customVolumeMounts`.
+    # The mounts must have at least these 2 files:
+    # clientId - with this content: <wiz service account id>
+    # clientToken - with this content: <wiz service account token>
+    #
+    # e.g. wizApiTokensVolumeMount: "/var/api-client/"
+    #      and this is how the mount looks like on the file system:
+    #      /var/api-client/clientId
+    #      /var/api-client/clientToken
+    #
+    # Implies `secret.enabled: false`.
+    wizApiTokensVolumeMount: ""
+
+  httpProxyConfiguration:
+    enabled: false # Should the components use a proxy.
+    create: false # Secret created by wiz-broker.
+    secretName: "" # The name of the proxy Secret.
+
+    httpProxy: ""
+    httpsProxy: ""
+    noProxyAddress: ""
+    # Proxy client certificate in PEM format. This is required for client certificate authentication.
+    # The file should contain a certificate and a private key in PEM format.
+    clientCertificate: ""
+
+  # Set this to true if you are using Istio in sidecar mode.
+  # When Istio uses sidecars, there are 2 issues when deploying Wiz:
+  # 1) The creation and deletion Jobs never complete (due to istio-proxy sidecar)
+  # 2) There is a race condition and possible network connectivity failures
+  #    when contacting the Wiz backend.
+  #
+  # When either of this happens, either the installation, upgrade or uninstallation
+  # of the charts fail.
+  # Setting this to true ensures that the istio-proxy gets a graceful shutdown
+  # and mitigates the networking race condition by sleeping before the Job starts.
+  # Learn more:
+  # https://istio.io/latest/blog/2023/native-sidecars/
+  istio:
+    enabled: false
+    proxySidecarPort: 0
+
+  useHATunnel: true
+
+  awsPrivateLink:
+    enabled: false
+
+  wiz-kubernetes-connector:
+    resources: {}
+# We usually recommend not to specify default resources and to leave this as a conscious
+# choice for the user. This also increases chances charts run on environments with little
+# resources, such as Minikube. If you do want to specify resources, uncomment the following
+# lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+#      limits:
+#       cpu: 100m
+#       memory: 128Mi
+#      requests:
+#       cpu: 100m
+#       memory: 128Mi

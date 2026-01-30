@@ -57,11 +57,11 @@ oss:
   bucketName:
 
 image:
-  repository: wiziopublic.azurecr.io
+  repository: public-registry.wiz.io
   namePrefix: wiz-git-proxy
   pullPolicy: Always
   # Overrides the image tag whose default is the chart appVersion.
-  tag: "90b9e193b9c7bcc2d8a8c7cc89b487b44187a78f-multiarch"
+  tag: "4c6a4eb5333a1d2f37aa68ca40f9435165c63063-multiarch"
 
 imagePullSecrets: []
 nameOverride: ""
@@ -94,7 +94,7 @@ tolerations: []
 affinity: {}
 hostpathCopier:
   image:
-    repository: wiziopublic.azurecr.io/wiz-busybox
+    name: wiz-busybox
     tag: 1.36.0
 
 internetAccessCertificates:
